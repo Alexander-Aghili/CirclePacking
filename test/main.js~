@@ -1,0 +1,108 @@
+import './style.css';
+import {Map, View} from 'ol';
+import TileLayer from 'ol/layer/Tile';
+import OSM from 'ol/source/OSM';
+import {Feature} from 'ol';
+import Point from 'ol/geom/Point';
+import Polygon from 'ol/geom/Polygon';
+import VectorSource from 'ol/source/Vector';
+import VectorLayer from 'ol/layer/Vector';
+import Style from 'ol/style/Style';
+import Stroke from 'ol/style/Stroke';
+import Fill from 'ol/style/Fill';
+import Icon from 'ol/style/Icon';
+import {fromLonLat, toLonLat} from 'ol/proj';
+import {get as getProjection} from 'ol/proj';
+import {getDistance} from 'ol/sphere';
+
+// Convert 250 miles to meters (1 mile = 1609.34 meters)
+const radiusInMiles = 250;
+const radiusInMeters = radiusInMiles * 1609.34;
+
+// Define San Francisco's coordinates (Longitude, Latitude)
+const sfCoordinates = [-122.4194, 37.7749];
+
+// Function to create a geodesic circle
+function createGeodesicCircle(center, radius, sides = 64) {
+  const coords = [];
+  const epsg4326 = getProjection('EPSG:4326');
+  for (let i = 0; i < sides; ++i) {
+    const angle = (2 * Math.PI * i) / sides;
+    const dx = radius * Math.cos(angle);
+    const dy = radius * Math.sin(angle);
+    const dest = computeOffset(center, dx, dy);
+    coords.push(fromLonLat(dest));
+  }
+  coords.push(coords[0]); // Close the polygon
+  return new Polygon([coords]);
+}
+
+// Helper function to compute offset point
+function computeOffset(origin, deltaLon, deltaLat) {
+  const [lon, lat] = origin;
+  const earthRadius = 6378137; // Earth's radius in meters
+  const newLat = lat + (deltaLat / earthRadius) * (180 / Math.PI);
+  const newLon =
+    lon +
+    ((deltaLon / earthRadius) * (180 / Math.PI)) / Math.cos((lat * Math.PI) / 180);
+  return [newLon, newLat];
+}
+
+// Create a feature for the dot at the center
+const sfCenter = fromLonLat(sfCoordinates);
+const dotFeature = new Feature({
+  geometry: new Point(sfCenter),
+});
+
+// Create a feature for the geodesic circle
+const circleGeometry = createGeodesicCircle(sfCoordinates, radiusInMeters);
+const circleFeature = new Feature({
+  geometry: circleGeometry,
+});
+
+// Style for the dot
+dotFeature.setStyle(
+  new Style({
+    image: new Icon({
+      src: 'https://upload.wikimedia.org/wikipedia/commons/e/e9/Black_dot.svg',
+      scale: 0.05,
+    }),
+  })
+);
+
+// Style for the circle
+circleFeature.setStyle(
+  new Style({
+    stroke: new Stroke({
+      color: 'blue',
+      width: 2,
+    }),
+    fill: new Fill({
+      color: 'rgba(0, 0, 255, 0.1)',
+    }),
+  })
+);
+
+// Create a vector source and layer to hold the features
+const vectorSource = new VectorSource({
+  features: [dotFeature, circleFeature],
+});
+
+const vectorLayer = new VectorLayer({
+  source: vectorSource,
+});
+
+// Create the map with the OSM layer and the vector layer
+const map = new Map({
+  target: 'map',
+  layers: [
+    new TileLayer({
+      source: new OSM(),
+    }),
+    vectorLayer,
+  ],
+  view: new View({
+    center: sfCenter,
+    zoom: 6, // Adjust zoom level to better fit the circle
+  }),
+});
